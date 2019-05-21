@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+
+
+<html>
+<meta charset="utf-8">
+<title>FSD life events</title>
+<style>
+
+body {
+  font-family: sans-serif;
+}
+
+.link {
+  stroke: #000;
+  stroke-opacity: 1;
+}
+
+.label-shadow {
+  pointer-events: none;
+  stroke: White;
+    stroke-width: 2px;
+	stroke-opacity: 0.9;
+  font: 10px sans-serif;
+}
+
+.label-text {
+  pointer-events: none;
+  fill: Black;
+  font: 10px sans-serif;
+}
+
+.label-hidden {
+	pointer-events: none;
+  stroke-opacity: 0.1;
+  fill-opacity: 0.1;
+  font: 10px sans-serif;
+}
+
+.label-selected {
+	pointer-events: none;
+}
+
+.label-shadow-selected {
+  pointer-events: none;
+  stroke: White;
+}
+
+.legend rect {
+  fill:white;
+  stroke:black;
+  opacity:0.8;}
+
+
+
+</style>
+<body>
+<h1>FSD life events</h1>
+
+<select id="life-events"></select>
+
+<div id="viz"></div>
+
+</body>
+
+<script src="d3.min.js"></script>
+<script src="ShortestPathCalculator.js"></script>
+<script src="tabletop.js"></script>
+<script src="d3.legend.js"></script>
+<script>
+
+
+//visualisation variables
+var width = 1800,
+    height = 900,
+	radius = 7,
+	centreX = width/2,
+	centreY = height/2
+	newCentreNode = "",
+	graph = {"nodes" : [], "links" : [] }
+	var color = d3.scale.category10();
+	
+//data source variables
+var public_spreadsheet_url = 'https://docs.google.com/spreadsheets/d/1DLuUNS9qbFDxYcBBVI2Ad6STPfpP-nWDhhy-bKMVIJ0/pubhtml',
+	linksData,
+	nodesData;
+	loadedLinks = false;
+	loadedNodes = false;
+
+//create the SVG for the force graph
+var svg = d3.select("#viz").append("svg")
+    .attr("width", width)
+    .attr("height", height);
+	
+svg.append("svg:rect")
+    .attr("width", width)
+    .attr("height", height)
+    .style("stroke", "gray")
+	.style("fill", "#fff");
+	
+//set up force variables	
+var force = d3.layout.force()
+	.charge(-150)
+    .gravity(0)
+	.alpha(.5)
+    .size([width, height])
+	.linkDistance(30)
+	.linkStrength(0.5);
+	
+//load data using Tabletop
+function getNodeData() {
+	nodesData = Tabletop.init( 	{ 	key: public_spreadsheet_url,
+						wanted: ["nodes"],
+						callback: processNodesData,
+						simpleSheet: true
+                    } );					
+}
+
+function getLinkData() {
+    linksData = Tabletop.init( 	{ 	key: public_spreadsheet_url,
+						wanted: ["links"],
+						callback: processLinksData,
+						simpleSheet: true
+                    } );
+}	
+
+
+//process the data from Google Sheets into format for D3 graphs
+function processNodesData(data) {	
+	var i;
+	for(i = 0; i < data.length; i++) {
+		if (data[i]["weight"] == 0 ) {
+			
+			//do nothing
+		} else {
+			graph.nodes.push({ "name": data[i]["name"], "group": data[i]["group"], "distancetocentre": 1, "centre": false, "fixed": false });
+		};
+	};
+	loadedNodes = true;
+	drawGraphIfComplete();
+}
+
+function processLinksData(data) {
+	var i;
+	for(i = 0; i < data.length; i++) {
+		graph.links.push({ "source": data[i]["source"], "target": data[i]["target"], "distance": +data[i]["value"] });
+		
+		for(var j = 0; j < graph.nodes.length; j++) {
+			if (graph.links[i].source === graph.nodes[j].name) {
+				graph.links[i].source = j;
+			}
+			if (graph.links[i].target === graph.nodes[j].name) {
+				graph.links[i].target = j;
+			}
+		}
+	};
+
+	loadedLinks = true;
+	drawGraphIfComplete();
+}
+
+
+function drawGraphIfComplete() {
+	console.log(loadedNodes + " " + loadedLinks);
+	if (loadedNodes && loadedLinks) {
+		console.log("complete");
+		drawGraph();
+	};
+}
+
+
+
+// draw force directed graph
+function drawGraph() {
+	
+	force.nodes(graph.nodes);
+	force.links(graph.links);
+	force.start();
+	
+	//http://stackoverflow.com/questions/12924227/how-to-check-d3-js-force-graph-for-nodes-with-no-links-and-remove-them?rq=1
+	//force.nodes().filter(function(d){d.weight==0}).exit().remove();
+	
+	
+	
+	var sp = new ShortestPathCalculator(graph.nodes, graph.links);
+	
+	//fill the drop down menu with names, in alphabetical order
+	var select = d3.select("select");
+	var selectValues = [];
+	graph.nodes.forEach(function (d) { selectValues.push(d.name) ;} ) ;
+	selectValues.sort();
+	
+	select.selectAll("option")
+		.data(selectValues)
+      .enter()
+        .append("option")
+        .attr("value", function (d) { return d; })
+        .text(function (d) { return d; });
+	
+	
+	// change the centre node when a new value is selected from the menu
+    select.on("change", function(d) {
+		var selectedNode = d3.select(this).property("value");
+        //alert(selectedNode);
+		changeCentreNode(selectedNode);
+    });
+	//////drop down menu
+	
+	
+	var link = svg.selectAll(".link")
+		.data(graph.links)
+     .enter().append("line")
+		.attr("class", "link")
+		.style("stroke-width", 3)
+		.style("stroke-opacity", 0.3)
+		.style("stroke", "Gray");
+	  
+	  
+	var drag = force.drag()
+		.on("dragstart", dragstart); 
+	  
+	var node = svg.selectAll(".node")
+		.data(graph.nodes)
+    .enter().append("g")
+		.attr("class", "node")
+		.call(drag);
+
+		
+	var selectedNode;	
+	var clickCount = 0;
+	var singleClickTimer;
+	var mouseClick = function(d) {
+		
+		if (d3.event.defaultPrevented) {  //if dragging then assume single click and set fixed to be true 
+			return;
+		} else {
+			clickCount++;
+			
+			if (clickCount === 2) { //double click
+				clearTimeout(singleClickTimer);
+				clickCount = 0;
+				
+				if (selectedNode === d.name) { 
+				
+					selectedNode = "";
+					revertStyles();
+					
+				} else {
+				
+					selectedNode = d.name;
+					console.log("double click: " + selectedNode);
+					changeCentreNode(selectedNode);
+				};
+			
+			} else if (clickCount === 1) { //single click
+				singleClickTimer = setTimeout(function() {
+					clickCount = 0;
+					
+					if (d.fixed == 1) {
+						d.fixed = 0;
+					} else {
+						//d3.select(this).classed("fixed", true);
+						d.fixed = 1;
+					};
+				
+				}, 250);
+			} ; 
+		};
+	};
+	  
+  var circles = node.append("circle")
+		.attr("class", "circles")
+		.attr("r", function (d) {   //size the circles based on the number of links
+			var noOfLinks = 5;
+			link.each( function (e) {
+				if (e.source.name === d.name) {
+					noOfLinks += 0.5;
+				};
+				if (e.target.name === d.name) {
+					noOfLinks += 0.5;
+				};
+			});
+			return noOfLinks;
+			})
+		.style("fill", function(d) { return color(d.group); })
+		.attr("data-legend",function(d) { return d.group})
+		.style("opacity", 0.8)
+		.on("click", mouseClick);
+	
+	var labelShadows = node.append("text")
+			.attr("class", "label-shadow")
+		  .attr("text-anchor", "middle")
+		  .attr("dy", ".35em")
+		  .text(function(d) { return d.name });
+		  
+	var labels = node.append("text")
+		.attr("class", "label-text")
+		  .attr("text-anchor", "middle")
+		  .attr("dy", ".35em")
+		  .style("fill", "Black")
+		  .text(function(d) { return d.name });
+		  
+	legend = svg.append("g")
+		.attr("class","legend")
+		.attr("transform","translate(50,30)")
+		.style("font-size","12px")
+		.call(d3.legend);
+
+  force.on("tick", function() {
+    link.attr("x1", function(d) { return d.source.x; })
+        .attr("y1", function(d) { return d.source.y; })
+        .attr("x2", function(d) { return d.target.x; })
+        .attr("y2", function(d) { return d.target.y; });
+
+   node.attr("cx", function(d) { return d.x = Math.max(radius, Math.min(width - radius, d.x)); })
+			.attr("cy", function(d) { return d.y = Math.max(radius, Math.min(height - radius, d.y)); });
+			
+					node.attr("transform", function(d) { return "translate(" + d.x + "," + d.y + ")"; });
+  });
+
+  function changeCentreNode (d) {	
+		newCentreNode = d;
+		var centreNodeID = 0;
+		var maxDistance = 0;
+		console.log("selected: " + newCentreNode);
+		
+		//get the  ID of the new centre node
+		node.each(function(d) { if (d.name === newCentreNode) { centreNodeID = d.index; } ; });
+	
+		node.each(function(d) {
+			// recalculate the shortest distance from each node to the centre node
+			var route = sp.findRoute(d.index, centreNodeID);
+			d.distancetocentre = route.distance;
+			if (maxDistance < route.distance) { maxDistance = route.distance; };
+		});
+		
+		circles
+			.style("opacity", function (d) {
+				//console.log(d.distancetocentre)
+				return (d.distancetocentre > 2) ? 0.4 : 1;
+			});
+		
+		//set links opacity depending on if its linked to a node close to the centre
+		link.style("stroke-opacity", function (d) {
+			return Math.max((1 - (0.9 * (d.source.distancetocentre / maxDistance ))), (1 - (0.9 * (d.target.distancetocentre / maxDistance ))) ) ;
+		});
+		
+		/*link.style("stroke", function (d) {
+			return (d.source.distancetocentre > 2) ? "LightGray" : (d.target.distancetocentre > 2) ? "LightGray" : "Gray";
+		});*/
+		
+		labels.attr("class", function (d) {
+			//console.log(d.distancetocentre)
+			
+			var textClass;
+			
+			if (d.distancetocentre > 2) {
+				
+				textClass = "label-hidden";
+				
+			} else if (d.distancetocentre > 0) {
+			
+				textClass = "label-text";
+				
+			} else if (d.distancetocentre == 0) {
+			
+				textClass = "label-selected";
+				
+			}
+			
+			return textClass;
+		});
+		
+		labelShadows.attr("class", function (d) {
+			
+			var textClass;
+			
+			if (d.distancetocentre > 2) {
+				
+				textClass = "label-hidden";
+				
+			} else if (d.distancetocentre > 0) {
+			
+				textClass = "label-shadow";
+				
+			} else if (d.distancetocentre == 0) {
+			
+				textClass = "label-shadow-selected";
+				
+			}
+			
+			return textClass;
+		});
+	
+	};
+	
+	function revertStyles () {
+		circles.style("opacity", 0.8);
+		link.style("stroke-opacity", 0.3)
+			.style("stroke", "Gray");
+		labels.attr("class", "label-text");
+		labelShadows.attr("class", "label-shadow");
+
+	};
+	
+	
+	function dragstart(d) {
+	  d3.select(this).classed("fixed", d.fixed = true);
+	};
+	
+			
+}
+
+getNodeData();
+getLinkData();
+
+
+</script>
