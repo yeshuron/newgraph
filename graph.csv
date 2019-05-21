@@ -1,5 +1,6 @@
-source,target
-A1,A2
+source,target,name
+A1,A2,cat
 A2,A3
+A3,A4
 A2,A4
 A4,A5
