@@ -1,4 +1,5 @@
 source,target
-Cat,Mammal
-Mammal,Dog
-Wolf,Dog
+A1, A2
+A2, A3
+A2, A4
+A4, A5
