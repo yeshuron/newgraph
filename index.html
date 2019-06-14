@@ -143,7 +143,7 @@
                         .nodes(d3.values(nodes))
                         .links(links)
                         .size([width, height])
-                        .linkDistance(300)
+                        .linkDistance(150)
                         .charge(-300)
                         .on("tick", tick)
                         .start();
@@ -220,7 +220,7 @@
                             .style("fill", "steelblue")
                             .style("stroke", "lightsteelblue")
                             .style("stroke-width", ".5px")
-                            .style("font", "20px sans-serif");
+                            .style("font", "10px sans-serif");
 
                     d3.select(this).select("circle").transition()
                             .duration(750)
